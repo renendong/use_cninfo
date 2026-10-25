@@ -42,6 +42,35 @@ cninfo = "cninfo.cli:main"
 cninfo --version   # cninfo-cli 0.1.0
 ```
 
+### 1.4 子命令选择
+
+```mermaid
+flowchart TD
+    A["先确定查询目标"] --> B{"只要单份定期报告?"}
+    B -- 是 --> C["fetch-report"]
+    B -- 否 --> D{"只看一只股票?"}
+    D -- 是 --> E{"需要下载正文?"}
+    E -- 是 --> F["fetch-stock --download"]
+    E -- 否 --> G["fetch-stock"]
+    D -- 否 --> H{"按板块 + 日期看全市场?"}
+    H -- 是 --> I{"需要标签过滤?"}
+    I -- 是 --> J["search --type / --sub-type"]
+    I -- 否 --> K["list"]
+    H -- 否 --> L{"管理缓存或 orgId?"}
+    L -- 是 --> M["cache / orgid"]
+```
+
+### 1.5 子命令速查
+
+| 子命令 | 数据源 | 需要 orgId | 默认下载 PDF | 默认输出 | 支持 `--json` |
+|---|---|---|---|---|---|
+| `fetch-report` | 单股定期报告 | 是 | 是 | 单个 JSON 对象 | 不适用 |
+| `fetch-stock` | 单股时间窗 | 是 | 否 | 表格 | 是 |
+| `list` | 板块切片 | 否 | 否 | 表格 | 是 |
+| `search` | 单股 / 板块切片 | 股票模式是 | 否 | 表格 | 是 |
+| `cache` | 本地缓存 | 否 | 否 | 文本 / JSON | 仅 `stats` |
+| `orgid` | 本地缓存 / topSearch | 缺失时回源 | 否 | JSON | 不适用 |
+
 ---
 
 ## 2. `fetch-report` — 单股指定定期报告
@@ -189,6 +218,30 @@ cninfo search --plate <sz|sh|bj> [--date D | --since D --until D] [--type T] [--
 - `--keyword` 在 **stock 模式**下不会传给 cninfo，只做客户端过滤；在 **market 模式**下先作为 `searchkey` 传给 cninfo，再客户端二次过滤。
 - `--date` 在 stock 模式下被忽略；stock 模式要求 `--since` + `--until`。
 - `use_classifier` 为假时，输出列不包含 `type/sub_type`。
+
+**过滤流程**
+
+```mermaid
+flowchart TD
+    A["遍历公告 item"] --> B["clean_title + ann_date"]
+    B --> C{"use_classifier?"}
+    C -- 是 --> D["classify(title, ann_date)"]
+    C -- 否 --> G
+    D --> E{"提供了 --type 且不匹配?"}
+    E -- 是 --> A
+    E -- 否 --> F{"提供了 --sub-type 且不匹配?"}
+    F -- 是 --> A
+    F -- 否 --> G{"提供了 keyword 且标题不含?"}
+    G -- 是 --> A
+    G -- 否 --> H["组装行"]
+    H --> I{"--download?"}
+    I -- 是 --> J["fetch_announcement"]
+    I -- 否 --> K["加入 rows"]
+    J --> K
+    K --> L{"达到 --limit?"}
+    L -- 是 --> M["break"]
+    L -- 否 --> A
+```
 
 ### 5.2 分类器缺失时的行为
 

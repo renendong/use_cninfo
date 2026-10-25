@@ -6,6 +6,21 @@
 
 ## 1. `api.py`
 
+### 1.0 函数速查
+
+| 函数 | 作用 | 发网络 | 返回值 / 异常 |
+|---|---|---|---|
+| `query_page` | 单页查询 | 是 | cninfo JSON dict |
+| `query_all` | 翻页迭代 | 是 | `Iterator[dict]` |
+| `epoch_ms_to_ann_date` | UTC ms → 北京日期 | 否 | `YYYYMMDD` 字符串 |
+| `clean_title` | 去除 `<em>` 高亮 | 否 | 清洗后的标题 |
+| `adjunct_to_url` | 相对路径 → PDF 直链 | 否 | URL 字符串 |
+| `is_periodic_report_body` | 是否定期报告本体 | 否 | `bool` |
+| `is_kind_report_body` | 是否指定年份/类型的本体 | 否 | `bool` |
+| `to_ts_code` | 6 位代码 + 板块 → `ts_code` | 否 | 字符串 / `ValueError` |
+| `guess_plate` | 代码首位推测板块 | 否 | `sz/sh/bj` / `ValueError` |
+| `fetch_pdf_bytes` | 下载 PDF | 是 | `bytes` / `HTTPError` |
+
 ### 1.1 常量
 
 | 常量 | 值 | 说明 |
@@ -94,6 +109,22 @@ query_all(
 
 > 注意：`max_pages=1000 × 30 = 30,000`，足以覆盖“单日全市场约 2.6 万条”的场景；更大的时间窗需要显式调大。
 
+**翻页流程**
+
+```mermaid
+flowchart TD
+    S["page = 1"] --> C{"page <= max_pages?"}
+    C -- 否 --> E["结束迭代"]
+    C -- 是 --> Q["query_page(page_num=page)"]
+    Q --> I{"announcements 为空?"}
+    I -- 是 --> E
+    I -- 否 --> Y["逐条 yield announcement"]
+    Y --> H{"hasMore 为真?"}
+    H -- 否 --> E
+    H -- 是 --> W["sleep(sleep_seconds)<br/>page += 1"]
+    W --> C
+```
+
 ### 1.4 字段清洗函数
 
 #### `epoch_ms_to_ann_date(ts_ms: int) -> str`
@@ -149,6 +180,22 @@ adjunct_to_url("/finalpage/2024-04-12/123.PDF")
 
 > 标题前缀不影响匹配（如 `贵州茅台2024年年度报告`），因为只检查尾部。
 > 同一份报告可能存在两条记录（标题一带前缀一带不带），本函数不负责去重。
+
+**判定流程**
+
+```mermaid
+flowchart TD
+    A["原始 title"] --> B["clean_title：去除 em 标签并 strip"]
+    B --> C{"endswith 摘要?"}
+    C -- 是 --> R["返回 False"]
+    C -- 否 --> D{"含排除词?<br/>审计报告 / 内部控制 / 提示性公告 / 披露 / 鉴证报告"}
+    D -- 是 --> R
+    D -- 否 --> E{"kind 在映射表中?"}
+    E -- 否 --> R
+    E -- 是 --> F{"endswith year + tail?"}
+    F -- 是 --> T["返回 True"]
+    F -- 否 --> R
+```
 
 ### 1.6 代码与板块转换
 

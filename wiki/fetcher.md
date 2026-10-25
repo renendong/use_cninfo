@@ -78,6 +78,25 @@ fetch_announcement(
    - `write_meta` 原始 item + 派生字段。
 9. 返回 `FetchResult(cache_hit=False)`。
 
+**执行流程**
+
+```mermaid
+flowchart TD
+    A["cninfo item + plate"] --> B["_norm_item 归一化"]
+    B --> C{"ann_id 与 adjunctUrl 齐全?"}
+    C -- 否 --> E1["抛 ValueError"]
+    C -- 是 --> D["可选：upsert_orgid"]
+    D --> E["paths_for + adjunct_to_url"]
+    E --> F{"force?"}
+    F -- 是 --> I["fetch_pdf_bytes"]
+    F -- 否 --> G{"三件套全存在?"}
+    G -- 是 --> H["read_meta<br/>返回 FetchResult(cache_hit=True)"]
+    G -- 否 --> I
+    I --> J["parse_pdf_bytes"]
+    J --> K["write_pdf / write_md / write_meta"]
+    K --> L["返回 FetchResult(cache_hit=False)"]
+```
+
 ### 3.2 缓存命中与未命中的差异
 
 | 维度 | 命中 | 未命中 |
@@ -124,6 +143,18 @@ print(res.to_dict())
 ---
 
 ## 4. 列表迭代器
+
+### 4.0 两个迭代器对比
+
+| 维度 | `iter_stock_announcements` | `iter_market_slice` |
+|---|---|---|
+| 查询范围 | 单只股票 + 时间窗 | 板块 + 日期/区间 |
+| 是否需要 orgId | 是（自动获取） | 否 |
+| `stock` 参数 | `<code>,<orgId>` | 不传 |
+| `searchkey` | 不支持 | 支持 |
+| `column` | `sz/bj → szse`，`sh → sse` | 同左 |
+| 返回内容 | cninfo 原始 announcement dict | 同左 |
+| 典型用途 | 单股公告、定期报告定位 | 全市场切片、标签搜索 |
 
 ### 4.1 `iter_stock_announcements(...)`
 
@@ -222,6 +253,23 @@ find_periodic_report(
 - 可显式传 `--plate` 排除板块猜测错误；
 - Python API 可传 `se_date_window="YYYY-MM-DD~YYYY-MM-DD"` 覆盖；
 - CLI 目前未暴露 `se_date_window` 参数。
+
+**定位流程**
+
+```mermaid
+flowchart TD
+    A["sec_code, year, kind"] --> B{"kind 合法?"}
+    B -- 否 --> X["抛 ValueError"]
+    B -- 是 --> C["映射 category + 选择默认窗口"]
+    C --> D["iter_stock_announcements（含 orgId）"]
+    D --> E{"还有 item?"}
+    E -- 否 --> N["返回 None"]
+    E -- 是 --> F{"secCode 精确匹配?"}
+    F -- 否 --> E
+    F -- 是 --> G{"is_kind_report_body?"}
+    G -- 否 --> E
+    G -- 是 --> H["返回该 item（首个命中）"]
+```
 
 ### 5.3 返回与去重
 

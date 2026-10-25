@@ -176,7 +176,59 @@ graph BT
     INIT["__init__.py"] --> API
 ```
 
+### 3.1 一次典型调用的模块协作
+
+以 `fetch-report` 为例，各模块的调用顺序如下：
+
+```mermaid
+sequenceDiagram
+    participant CLI as cli
+    participant F as fetcher
+    participant O as orgid
+    participant A as api
+    participant C as cache
+    participant P as parser
+
+    CLI->>F: find_periodic_report(code, year, kind)
+    F->>O: stock_param(sec_code)
+    O->>C: load_orgid_map()
+    alt orgId 缓存缺失
+        O->>A: POST topSearch/query
+        O->>C: upsert_orgid()
+    end
+    F->>A: query_all(分页查询)
+    A-->>F: announcement items
+    F-->>CLI: 报告本体 item
+
+    CLI->>F: fetch_announcement(item, plate)
+    F->>C: paths_for + all_exist
+    alt 缓存命中
+        C-->>F: meta
+    else 未命中
+        F->>A: fetch_pdf_bytes(pdf_url)
+        A-->>F: PDF bytes
+        F->>P: parse_pdf_bytes(bytes)
+        P-->>F: ParsedPdf
+        F->>C: write_pdf / write_md / write_meta
+    end
+    F-->>CLI: FetchResult
+```
+
 ## 4. 模块边界原则
+
+### 4.1 模块 I/O 边界
+
+| 模块 | 读取 | 写入 | 网络 | 文件系统 |
+|---|---|---|---|---|
+| `api` | 函数参数 | 无 | 查询接口、PDF 下载 | 无 |
+| `parser` | PDF bytes / 文件 | 无 | 无 | 仅 `parse_pdf_file` 读文件 |
+| `cache` | 缓存目录 | 缓存目录 | 无 | 全部读写集中于此 |
+| `orgid` | `orgid_map.json` | `orgid_map.json` | 仅缓存缺失时 | 通过 `cache` 间接访问 |
+| `classify` | 标题 / 日期 | 无 | 无 | 无 |
+| `fetcher` | item、缓存 | 缓存（经 `cache`） | 查询 + PDF 下载 | 通过 `cache` 间接访问 |
+| `cli` | argv | stdout / stderr | 无直接网络 | 通过 `cache` 间接访问 |
+
+### 4.2 边界原则
 
 | 原则 | 含义 |
 |---|---|

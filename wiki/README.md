@@ -16,6 +16,51 @@
 
 ---
 
+## 整体一览
+
+```mermaid
+flowchart TD
+    U["用户 / Agent / Claude Skill"] --> CLI["cninfo CLI"]
+
+    CLI --> C1["fetch-report<br/>单份定期报告"]
+    CLI --> C2["fetch-stock<br/>单股时间窗"]
+    CLI --> C3["list<br/>全市场切片"]
+    CLI --> C4["search<br/>标签 / 关键词"]
+    CLI --> C5["cache<br/>统计 / 校验 / 清理"]
+    CLI --> C6["orgid<br/>代码 → orgId"]
+
+    C1 --> F["fetcher 用例层"]
+    C2 --> F
+    C3 --> F
+    C4 --> F
+    C5 --> K["cache 层"]
+    C6 --> O["orgid 服务"]
+
+    F --> Q["cninfo hisAnnouncement/query"]
+    F --> P["PDF 下载 + PyMuPDF 解析"]
+    F --> K
+    F --> O
+    O --> T["cninfo topSearch/query"]
+
+    K --> L[("~/.cache/cninfo<br/>pdf / md / meta / orgid_map")]
+    Q --> CN[("cninfo.com.cn")]
+    T --> CN
+    P --> ST[("static.cninfo.com.cn")]
+```
+
+### 命令能力对照
+
+| 子命令 | 查询范围 | 下载 PDF | 需要 orgId | 默认落缓存 |
+|---|---|---|---|---|
+| `fetch-report` | 单股单份定期报告 | 是 | 是 | 是 |
+| `fetch-stock` | 单股时间窗 | 仅 `--download` | 是 | 仅 `--download` |
+| `list` | 全市场板块切片 | 仅 `--download` | 否 | 仅 `--download` |
+| `search` | 单股或全市场 | 仅 `--download` | 股票模式需要 | 仅 `--download` |
+| `cache` | 本地缓存 | 否 | 否 | 管理缓存 |
+| `orgid` | 映射查询 | 否 | 缺失时回源 | 写 `orgid_map.json` |
+
+---
+
 ## 快速开始
 
 ### 安装

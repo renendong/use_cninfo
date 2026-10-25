@@ -224,6 +224,35 @@ stateDiagram-v2
 
 > 注意：argparse 的用法错误退出码也是 **2**，与 `fetch-report` 的“未找到报告”退出码相同；脚本化调用时建议结合 stderr 文案区分。
 
+### 7.1 异常传播路径
+
+```mermaid
+flowchart TD
+    A["OrgIdNotFound<br/>orgid.py"] --> B{"命令是否捕获?"}
+    B -- 是 --> C["stderr: error: ...<br/>退出码 1"]
+    B -- 否 --> D["向上冒泡 → traceback"]
+
+    E["ValueError<br/>非法 plate / 代码 / 日期 / kind"] --> F["多数命令未捕获<br/>→ traceback"]
+
+    G["requests.HTTPError / Timeout"] --> F
+    H["PyMuPDF 解析异常"] --> F
+
+    I["ClassifierUnavailable<br/>classify.py"] --> J["search 首次 classify 时<br/>被宽泛 except 捕获<br/>退出码 1"]
+
+    K["argparse 用法错误"] --> L["打印 usage<br/>退出码 2"]
+```
+
+### 7.2 子命令调用链
+
+| 子命令 | CLI 动作函数 | 用例层调用 | 最终涉及的底层模块 |
+|---|---|---|---|
+| `fetch-report` | `cmd_fetch_report` | `find_periodic_report` → `fetch_announcement` | `api` / `orgid` / `parser` / `cache` |
+| `fetch-stock` | `cmd_fetch_stock` | `iter_stock_announcements` →（可选）`fetch_announcement` | `api` / `orgid` / `parser` / `cache` |
+| `list` | `cmd_list` | `iter_market_slice` →（可选）`fetch_announcement` | `api` / `parser` / `cache` |
+| `search` | `cmd_search` | `iter_stock_announcements` / `iter_market_slice` → `classify` →（可选）`fetch_announcement` | `api` / `orgid` / `classify` / `parser` / `cache` |
+| `cache` | `cmd_cache` | `stats` / `verify` / `prune_older_than` | `cache` |
+| `orgid` | `cmd_orgid` | `get_orgid` / `lookup_orgid` | `orgid` / `api` / `cache` |
+
 ## 8. 扩展点
 
 | 需求 | 改动位置 | 同步事项 |

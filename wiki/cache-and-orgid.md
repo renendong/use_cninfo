@@ -28,6 +28,15 @@
 - meta 只按 `ann_id` 平铺，因为 `ann_id` 全局唯一，也便于 `verify` / `prune` 扫描。
 - 文件名使用 `ann_date__ann_id`，避免同名冲突且可按日期排序。
 
+### 1.1 三类文件的角色
+
+| 文件 | 内容 | 写入方 | 读取方 | 命中必需 |
+|---|---|---|---|---|
+| `pdf/<ts_code>/<date>__<id>.pdf` | 原始 PDF | `fetch_announcement` | 外部工具 / 用户 OCR | 是 |
+| `md/<ts_code>/<date>__<id>.md` | frontmatter + 全文 | `fetch_announcement` | 用户 / 下游 skill | 是 |
+| `meta/<ann_id>.json` | 原始 item + 派生统计 | `fetch_announcement` | 缓存命中路径 | 是 |
+| `orgid_map.json` | `secCode → orgId` | `upsert_orgid` | `get_orgid` | 否（独立缓存） |
+
 ---
 
 ## 2. `CachePaths` 与路径规则
@@ -149,6 +158,22 @@ else:
 
 命中分支中，`title` / `ts_code` / `ann_date` 仍取自本次传入的 cninfo item，而非 meta；只有统计字段与 category 从 meta 读取。
 
+**命中判断流程**
+
+```mermaid
+flowchart TD
+    A["fetch_announcement(item)"] --> B["计算 paths + pdf_url"]
+    B --> C{"force=True?"}
+    C -- 是 --> D["下载 PDF"]
+    C -- 否 --> E{"pdf + md + meta 全存在?"}
+    E -- 是 --> F["read_meta"]
+    F --> G["FetchResult<br/>cache_hit=True"]
+    E -- 否 --> D
+    D --> H["parse_pdf_bytes"]
+    H --> I["write_pdf / write_md / write_meta"]
+    I --> J["FetchResult<br/>cache_hit=False"]
+```
+
 ---
 
 ## 5. orgId 映射
@@ -265,6 +290,29 @@ md but no meta:  ann_id=<id>
 ```
 
 返回空列表表示一致。告警顺序取决于集合遍历，未排序。
+
+**校验逻辑**
+
+```mermaid
+flowchart LR
+    M["meta/*.json"] --> MS["ann_id 集合"]
+    P["pdf/**/*.pdf"] --> PS["按 __ 分割取 ann_id"]
+    D["md/**/*.md"] --> DS["按 __ 分割取 ann_id"]
+
+    MS --> C1["meta - pdf"]
+    MS --> C2["meta - md"]
+    PS --> C3["pdf - meta"]
+    DS --> C4["md - meta"]
+
+    C1 --> W["汇总非空差集"]
+    C2 --> W
+    C3 --> W
+    C4 --> W
+
+    W --> R{"差集全部为空?"}
+    R -- 是 --> OK["返回空列表：一致"]
+    R -- 否 --> BAD["返回告警列表"]
+```
 
 ### 6.3 `prune_older_than(days) -> int`
 

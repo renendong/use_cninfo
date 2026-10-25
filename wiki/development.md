@@ -109,6 +109,25 @@ uv run pytest -v
 
 `tests/fixtures/_make_pdf.py` 用于重新生成样例 PDF（几乎不需要）。
 
+**Fixture 关系**
+
+```mermaid
+flowchart LR
+    T["pytest"] --> N["autouse: _no_real_network<br/>拦截 requests.get/post"]
+    T --> C["tmp_cache_dir<br/>CNINFO_CACHE_DIR=tmp_path"]
+    T --> Q["sample_query_response"]
+    T --> P["sample_pdf_bytes"]
+    T --> S["sample_topsearch_response"]
+    T --> M["monkeypatch<br/>requests.Session / argus_legal"]
+
+    C --> F["test_fetcher / test_cache / test_cli"]
+    Q --> F
+    P --> F
+    S --> O["test_orgid"]
+    M --> O
+    M --> K["test_classify"]
+```
+
 ### 3.4 测试覆盖地图
 
 | 文件 | 数量 | 覆盖点 |
@@ -147,6 +166,21 @@ uv run pytest -v
 5. `uv pip install -e ".[dev]"`；
 6. `uv run ruff check src tests`；
 7. `uv run pytest -v`。
+
+**CI 流程**
+
+```mermaid
+flowchart LR
+    A["push / PR 到 main"] --> B["matrix<br/>3.10 / 3.11 / 3.12"]
+    B --> C["checkout + setup-uv"]
+    C --> D["uv venv --python 版本"]
+    D --> E["安装包 + dev 依赖"]
+    E --> F["ruff check src tests"]
+    F --> G["pytest -v（离线）"]
+    G --> H{"全部通过?"}
+    H -- 是 --> I["CI 绿"]
+    H -- 否 --> J["失败<br/>fail-fast: false"]
+```
 
 矩阵：Python 3.10、3.11、3.12，`fail-fast: false`（任一版本失败不取消其它版本）。
 
@@ -202,6 +236,18 @@ uv run ruff check --fix src tests
 ### 6.4 更换 orgId 来源
 
 只改 `orgid.lookup_orgid()`，保持函数签名；同步 `docs/gotchas.md #2`。
+
+### 6.5 改动检查清单
+
+| 改动类型 | 代码 | 文档 | 测试 |
+|---|---|---|---|
+| 新增 category / kind | `api.py` 常量与映射 | `docs/api_reference.md` | `test_api.py` |
+| 新增 CLI 子命令 | `cli.py` parser + `cmd_xxx` | `wiki/cli.md`、README | `test_cli.py` 走 `main([...])` |
+| 修改缓存布局 | `cache.paths_for` | README、SKILL.md、本 wiki | `test_cache.py` 路径断言 |
+| 修改 frontmatter / meta | `fetcher.fetch_announcement` | 本 wiki 缓存页 | `test_fetcher.py` 内容断言 |
+| 更换 orgId 来源 | `orgid.lookup_orgid` | `docs/gotchas.md #2` | `test_orgid.py` |
+| 升级分类器规则 | 外部 `announcement_filter` | — | 手动 e2e |
+| 修复 PDF 404 重试 | `fetcher.fetch_announcement` / `api` | `docs/gotchas.md #7` | 新增 mock 测试 |
 
 ---
 
